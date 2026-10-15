@@ -1,8 +1,11 @@
 import contextlib
 import io
 import os
+import subprocess
 import tempfile
+import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import foldercompare
@@ -101,6 +104,72 @@ class TestCompare(Base):
 def quiet_main(args):
     with contextlib.redirect_stdout(io.StringIO()):
         return foldercompare.main(args)
+
+
+class TestEdges(Base):
+    def test_empty_folder_only_on_one_side(self):
+        (self.a / "empty").mkdir()
+        r = foldercompare.compare(self.a, self.b)
+        self.assertEqual(r["only_a"], ["empty/"])
+
+    def test_empty_folder_in_both_is_same(self):
+        (self.a / "empty").mkdir()
+        (self.b / "empty").mkdir()
+        self.assertEqual(foldercompare.compare(self.a, self.b)["same"], ["empty/"])
+
+    def test_file_in_one_and_folder_in_other(self):
+        self.put(self.a, "x", b"1")
+        self.put(self.b, "x/y.txt", b"1")
+        r = foldercompare.compare(self.a, self.b)
+        self.assertEqual(r["only_a"], ["x"])
+        self.assertEqual(r["only_b"], ["x/y.txt"])
+
+    def test_unlistable_folder_makes_result_incomplete(self):
+        self.put(self.a, "x.txt", b"1")
+
+        def fake_walk(top, onerror=None, **kw):
+            if str(top) == str(self.b) and onerror:
+                onerror(PermissionError(13, "denied", str(self.b / "locked")))
+            return iter([])
+
+        with mock.patch("foldercompare.os.walk", fake_walk):
+            r = foldercompare.compare(self.a, self.b)
+        self.assertEqual(r["not_listed"], ["locked"])
+        self.assertIn("INCOMPLETE", foldercompare.report(r, "a", "b"))
+        with mock.patch("foldercompare.os.walk", fake_walk), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(foldercompare.main(["p", str(self.a), str(self.b)]), 1)
+
+    def test_special_file_is_not_opened(self):
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("this system has no named pipes")
+        os.mkfifo(self.a / "pipe")
+        os.mkfifo(self.b / "pipe")
+        out = {}
+        worker = threading.Thread(target=lambda: out.update(foldercompare.compare(self.a, self.b)), daemon=True)
+        worker.start()
+        worker.join(5)
+        self.assertFalse(worker.is_alive(), "compare hung on a named pipe")
+        self.assertEqual(out["skipped"], ["pipe", "pipe"])
+        self.assertEqual(out["same"] + out["different"], [])
+
+    def test_windows_junction_is_skipped(self):
+        if os.name != "nt" or not hasattr(os.path, "isjunction"):
+            self.skipTest("junctions are a Windows feature and need Python 3.12")
+        self.put(self.root, "target/inside.txt", b"1")
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(self.a / "jn"), str(self.root / "target")],
+                              capture_output=True)
+        if made.returncode != 0:
+            self.skipTest("could not make a junction here")
+        r = foldercompare.compare(self.a, self.b)
+        self.assertEqual(r["skipped"], ["jn/"])
+        self.assertEqual(r["only_a"], [])
+
+    def test_changed_file_seen_after_earlier_run(self):
+        self.put(self.a, "x.txt", b"100")
+        self.put(self.b, "x.txt", b"100")
+        self.assertEqual(foldercompare.compare(self.a, self.b)["same"], ["x.txt"])
+        self.put(self.b, "x.txt", b"900")
+        self.assertEqual(foldercompare.compare(self.a, self.b)["different"], ["x.txt"])
 
 
 class TestMain(Base):
