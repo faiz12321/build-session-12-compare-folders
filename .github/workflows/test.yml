@@ -1,0 +1,26 @@
+name: test
+on: [push, workflow_dispatch]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest -v
+      - run: python make_sample.py
+      - name: Reports on the sample folders
+        shell: python
+        run: |
+          import subprocess, sys
+          def run(*extra):
+              return subprocess.run([sys.executable, "foldercompare.py", "sample/a", "sample/b", *extra], capture_output=True, text=True)
+          full = run()
+          assert full.returncode == 1 and "In both, different: 1" in full.stdout and "price.txt" in full.stdout, full.stdout
+          quick = run("--quick")
+          assert quick.returncode == 1 and "In both, different: 0" in quick.stdout and "In both, the same: 3" in quick.stdout, quick.stdout
+          print("Sample folder reports checked.")
