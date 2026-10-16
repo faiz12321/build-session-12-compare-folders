@@ -17,6 +17,12 @@ On Windows, if `python` is not found, use `py`.
 - `make_sample.py` - makes two small made-up folders
 - `test_foldercompare.py` - tests
 
+## Setup safety and evidence
+
+Setup refuses an existing sample path. It creates a new folder and exclusively writes eight fictional files in sample/a and sample/b. It never resets old data. Start in a new empty lesson folder. Four added collision/repeat checks preserve nested unrelated bytes and modification times. The checker is unchanged. Tests use small temporary fixtures, not all filesystems. Reports reveal file names and paths; keep private output private.
+
+Two Windows and two Ubuntu recordings each ran 26 tests, with one platform-specific check skipped (named pipes on Windows, Windows junctions on Ubuntu). Each platform pair differs only in unittest time. Displays use first Windows output. Recorder writes exact visible first/final file versions into its own unique temporary folder and removes only that folder. Setup itself refuses a repeat run. Comparison exit 1 means differences or incomplete results.
+
 ## Notes
 
 - Python's filecmp module, which this tool uses, treats two files as equal in its default shallow mode if their size and modified time match (https://docs.python.org/3/library/filecmp.html). The sample shows a file that this can miss.
