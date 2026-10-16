@@ -137,7 +137,7 @@ class TestEdges(Base):
         self.assertEqual(r["not_listed"], ["locked"])
         self.assertIn("INCOMPLETE", foldercompare.report(r, "a", "b"))
         with mock.patch("foldercompare.os.walk", fake_walk), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(foldercompare.main(["p", str(self.a), str(self.b)]), 1)
+            self.assertEqual(foldercompare.main(["p", str(self.a), str(self.b)]), 2)
 
     def test_special_file_is_not_opened(self):
         if not hasattr(os, "mkfifo"):
@@ -246,6 +246,77 @@ class SetupSafetyTests(unittest.TestCase):
         self.assertEqual(keep.read_bytes(),b'KEEP')
 
 
+
+
+class PathSafety(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.base=Path(self.tmp.name);self.root=self.base/'sample'
+        make_sample.make(self.root);self.file=self.root/'a'/'same.txt'
+    def link(self,path,target,directory=False):
+        try:path.symlink_to(target,target_is_directory=directory)
+        except OSError:self.skipTest('Symlink creation unavailable')
+    def code(self,path):
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=foldercompare.main(['foldercompare.py',str(path),str(self.root/'b')])
+        return code,out.getvalue()
+    def test_file_link_refuses(self):
+        p=self.base/'linked';self.link(p,self.file)
+        with self.assertRaises(OSError):foldercompare.safe_input(p,directory=True)
+        self.assertEqual(self.code(p)[0],2)
+    def test_linked_ancestor_refuses(self):
+        p=self.base/'linked';self.link(p,self.root,True)
+        self.assertEqual(self.code(p/'a')[0],2)
+    def test_dangling_link_refuses(self):
+        p=self.base/'linked';self.link(p,self.base/'missing')
+        self.assertEqual(self.code(p)[0],2)
+    def test_self_loop_refuses(self):
+        p=self.base/'linked';self.link(p,p)
+        self.assertEqual(self.code(p)[0],2)
+    def test_hardlink_refuses(self):
+        p=self.base/'hard';os.link(self.file,p)
+        self.assertEqual(self.code(p)[0],2)
+    def test_pipe_refuses_without_blocking(self):
+        if not hasattr(os,'mkfifo'):self.skipTest('Unix pipe unavailable')
+        p=self.base/'pipe';os.mkfifo(p)
+        self.assertEqual(self.code(p)[0],2)
+    def test_file_root_refuses(self):self.assertEqual(self.code(self.file)[0],2)
+    def test_traversal_refuses(self):self.assertEqual(self.code(self.root/'..'/'sample'/'a')[0],2)
+    def test_reparse_attribute_refuses(self):
+        real=Path.lstat;target=self.root/'a'
+        def fake(path,*args,**kwargs):
+            value=real(path,*args,**kwargs)
+            if path==target:return type('Reparse',(),{'st_mode':value.st_mode,'st_file_attributes':0x400})()
+            return value
+        with mock.patch.object(Path,'lstat',fake):self.assertEqual(self.code(target)[0],2)
+    def test_metadata_failure_nonzero(self):
+        with mock.patch.object(Path,'lstat',side_effect=OSError('forced metadata error')):
+            code,text=self.code(self.file);self.assertEqual(code,2);self.assertIn('forced metadata error',text)
+    def test_setup_linked_parent_refuses(self):
+        p=self.base/'linked';self.link(p,self.root,True)
+        with self.assertRaises(OSError):make_sample.make(p/'new')
+        self.assertFalse((self.root/'new').exists())
+    def test_setup_traversal_refuses(self):
+        with self.assertRaises(OSError):make_sample.make(self.root/'..'/'new')
+
+
+class TreeSafety(Base):
+    def test_hardlinks_skipped_and_incomplete(self):
+        self.put(self.a,'one',b'1');os.link(self.a/'one',self.a/'two')
+        r=foldercompare.compare(self.a,self.b)
+        self.assertEqual(r['skipped'],['one','two'])
+        self.assertEqual(quiet_main(['p',str(self.a),str(self.b)]),2)
+    def test_root_link_refuses(self):
+        p=self.root/'alias'
+        try:p.symlink_to(self.a,target_is_directory=True)
+        except OSError:self.skipTest('Symlink creation unavailable')
+        self.assertEqual(quiet_main(['p',str(p),str(self.b)]),2)
+    def test_tree_metadata_error_is_incomplete(self):
+        self.put(self.a,'one',b'1');real=Path.lstat
+        def fake(p,*a,**kw):
+            if p==self.a/'one':raise OSError('forced')
+            return real(p,*a,**kw)
+        with mock.patch.object(Path,'lstat',fake):
+            self.assertEqual(quiet_main(['p',str(self.a),str(self.b)]),2)
 
 
 if __name__ == "__main__":
