@@ -18,18 +18,23 @@ def write(folder, files):
     for name, data in files.items():
         path = folder / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
+        with path.open("xb") as handle:
+            handle.write(data)
         os.utime(path, (STAMP, STAMP))
 
 
 def make(root):
     root = Path(root)
+    root.mkdir()
     write(root / "a", A)
     write(root / "b", B)
     return root
 
 
 if __name__ == "__main__":
-    make(Path(__file__).resolve().parent / "sample")
+    try:
+        make(Path(__file__).resolve().parent / "sample")
+    except FileExistsError:
+        raise SystemExit("Stopped: sample already exists. Nothing was replaced or deleted.")
     print("Made sample/a and sample/b")
     sys.exit(0)
