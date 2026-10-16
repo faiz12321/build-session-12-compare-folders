@@ -1,0 +1,84 @@
+### CMD: python --version
+Python 3.12.3
+### EXIT: 0
+
+### CMD: python make_sample.py
+Made sample/a and sample/b
+### EXIT: 0
+
+### CMD: python make_sample.py
+Stopped: sample already exists. Nothing was replaced or deleted.
+### EXIT: 1
+
+### CMD: python -c "print(open('sample/a/price.txt').read().strip()); print(open('sample/b/price.txt').read().strip())"
+price: 100
+price: 900
+### EXIT: 0
+
+### CMD: python foldercompare.py sample/a sample/b
+Only in first: ['only_in_a.txt']
+Only in second: ['only_in_b.txt']
+Different: []
+### EXIT: 0
+
+### CMD: python foldercompare.py sample/a sample/b
+Compared sample/a and sample/b, byte by byte.
+Only in the first folder: 1
+  only_in_a.txt
+Only in the second folder: 1
+  only_in_b.txt
+In both, different: 1
+  price.txt
+In both, could not be read: 0
+Skipped, not compared (links, junctions, special files): 0
+In both, the same: 2
+Folders are listed only when empty, with a slash after the name.
+### EXIT: 1
+
+### CMD: python foldercompare.py sample/a sample/b --quick
+Compared sample/a and sample/b, quick (size and modified time).
+Only in the first folder: 1
+  only_in_a.txt
+Only in the second folder: 1
+  only_in_b.txt
+In both, different: 0
+In both, could not be read: 0
+Skipped, not compared (links, junctions, special files): 0
+In both, the same: 3
+Folders are listed only when empty, with a slash after the name.
+Quick mode trusts size and modified time. It can call two different files the same.
+### EXIT: 1
+
+### CMD: python -m unittest -v
+test_cli_refuses_without_replacing (test_foldercompare.SetupSafetyTests.test_cli_refuses_without_replacing) ... ok
+test_existing_file_preserved (test_foldercompare.SetupSafetyTests.test_existing_file_preserved) ... ok
+test_existing_folder_preserves_nested_bytes_and_metadata (test_foldercompare.SetupSafetyTests.test_existing_folder_preserves_nested_bytes_and_metadata) ... ok
+test_repeat_setup_preserves_generated_bytes_and_metadata (test_foldercompare.SetupSafetyTests.test_repeat_setup_preserves_generated_bytes_and_metadata) ... ok
+test_default_is_byte_by_byte_with_different_times (test_foldercompare.TestCompare.test_default_is_byte_by_byte_with_different_times) ... ok
+test_different_content (test_foldercompare.TestCompare.test_different_content) ... ok
+test_different_size (test_foldercompare.TestCompare.test_different_size) ... ok
+test_empty_folders (test_foldercompare.TestCompare.test_empty_folders) ... ok
+test_files_untouched_after_run (test_foldercompare.TestCompare.test_files_untouched_after_run) ... ok
+test_identical_folders (test_foldercompare.TestCompare.test_identical_folders) ... ok
+test_only_in_one_side (test_foldercompare.TestCompare.test_only_in_one_side) ... ok
+test_quick_mode_can_miss_a_change (test_foldercompare.TestCompare.test_quick_mode_can_miss_a_change) ... ok
+test_quick_mode_reads_files_when_times_differ (test_foldercompare.TestCompare.test_quick_mode_reads_files_when_times_differ) ... ok
+test_subfolders_use_forward_slashes (test_foldercompare.TestCompare.test_subfolders_use_forward_slashes) ... ok
+test_symlink_is_skipped (test_foldercompare.TestCompare.test_symlink_is_skipped) ... ok
+test_changed_file_seen_after_earlier_run (test_foldercompare.TestEdges.test_changed_file_seen_after_earlier_run) ... ok
+test_empty_folder_in_both_is_same (test_foldercompare.TestEdges.test_empty_folder_in_both_is_same) ... ok
+test_empty_folder_only_on_one_side (test_foldercompare.TestEdges.test_empty_folder_only_on_one_side) ... ok
+test_file_in_one_and_folder_in_other (test_foldercompare.TestEdges.test_file_in_one_and_folder_in_other) ... ok
+test_special_file_is_not_opened (test_foldercompare.TestEdges.test_special_file_is_not_opened) ... ok
+test_unlistable_folder_makes_result_incomplete (test_foldercompare.TestEdges.test_unlistable_folder_makes_result_incomplete) ... ok
+test_windows_junction_is_skipped (test_foldercompare.TestEdges.test_windows_junction_is_skipped) ... skipped 'junctions are a Windows feature and need Python 3.12'
+test_bad_arguments (test_foldercompare.TestMain.test_bad_arguments) ... ok
+test_exit_codes (test_foldercompare.TestMain.test_exit_codes) ... ok
+test_report_text (test_foldercompare.TestMain.test_report_text) ... ok
+test_sample_quick_mode_misses_price (test_foldercompare.TestMain.test_sample_quick_mode_misses_price) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 0.049s
+
+OK (skipped=1)
+### EXIT: 0
