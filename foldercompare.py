@@ -6,12 +6,36 @@ Run: python foldercompare.py FOLDER_A FOLDER_B [--quick]
 import filecmp
 import os
 import sys
+import stat
+from pathlib import Path
+
+
+def safe_input(value, directory=False):
+    path = Path(value).absolute()
+    if '..' in path.parts:
+        raise OSError('Parent-traversal paths are unsupported.')
+    for part in [*reversed(path.parents), path]:
+        info = part.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise OSError('Links/reparse points are unsupported.')
+    info = path.lstat()
+    if directory:
+        if not stat.S_ISDIR(info.st_mode):
+            raise NotADirectoryError('Expected an ordinary directory.')
+    elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise OSError('Expected an ordinary singly linked file.')
+    return path
+
+
+
+
+
 
 
 def is_link(path):
     """True for symbolic links and, on Python 3.12 and later, Windows junctions."""
-    junction = getattr(os.path, "isjunction", None)
-    return os.path.islink(path) or bool(junction and junction(path))
+    info = Path(path).lstat()
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
 def list_files(root):
@@ -21,6 +45,7 @@ def list_files(root):
     skipped: links, junctions and special files (they are never opened).
     errors: folders that could not be listed, so the result is incomplete.
     """
+    safe_input(root, directory=True)
     entries, skipped, errors = [], [], []
 
     def note_error(error):
@@ -30,13 +55,17 @@ def list_files(root):
         dirs.sort()
         for d in list(dirs):
             full = os.path.join(here, d)
-            if is_link(full):
+            try:
+                safe_input(full, directory=True)
+            except OSError:
                 skipped.append(os.path.relpath(full, root).replace(os.sep, "/") + "/")
                 dirs.remove(d)
         for name in sorted(names):
             full = os.path.join(here, name)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
-            if is_link(full) or not os.path.isfile(full):
+            try:
+                safe_input(full)
+            except OSError:
                 skipped.append(rel)
             else:
                 entries.append(rel)
@@ -59,7 +88,9 @@ def compare(a, b, quick=False):
             result["same"].append(rel)
             continue
         try:
-            equal = filecmp.cmp(os.path.join(a, rel), os.path.join(b, rel), shallow=quick)
+            left = safe_input(os.path.join(a, rel))
+            right = safe_input(os.path.join(b, rel))
+            equal = filecmp.cmp(left, right, shallow=quick)
         except OSError:
             result["unreadable"].append(rel)
             continue
@@ -91,12 +122,16 @@ def main(argv):
     if len(args) != 2:
         print("Usage: python foldercompare.py FOLDER_A FOLDER_B [--quick]")
         return 2
-    for folder in args:
-        if not os.path.isdir(folder):
-            print("Not a folder: " + folder)
-            return 2
-    result = compare(args[0], args[1], quick)
+    try:
+        for folder in args:
+            safe_input(folder, directory=True)
+        result = compare(args[0], args[1], quick)
+    except OSError as error:
+        print("Could not compare: " + str(error))
+        return 2
     print(report(result, args[0], args[1]))
+    if result["unreadable"] or result["not_listed"] or result["skipped"]:
+        return 2
     found = (result["only_a"] or result["only_b"] or result["different"]
              or result["unreadable"] or result["not_listed"])
     return 1 if found else 0
